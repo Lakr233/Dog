@@ -28,21 +28,22 @@ internal let cLogFilenameLenth = [
 
 // MARK: - THE CLASS
 
+
 public final class Dog {
     public enum DogLevel: String {
-        case verbose
         /// Everything
+        case verbose
+        /// Normal output like when the (information) was updated
         case info
-        /// Normal output like when the information was updated
-        case warning
-        /// Recoverable warning for example
+        /// Recoverable issue (warning) that would not break the logic flow
         /// - if the user wrote the wrong data but we can ignore the error and continue to execute
-        case error
-        /// Non-recoverable error within a function
+        case warning
+        /// Non-recoverable (error), will impact logic flow
         /// - such as permission denied and the method shall return or throw
-        case critical
-        /// Error where the application must exit or terminate
+        case error
+        /// (Fatal) where the application must exit or terminate
         /// fatalError or assert failure
+        case critical
     }
 
     /// how many logs that you want to keep
