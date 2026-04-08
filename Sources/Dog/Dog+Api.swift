@@ -51,17 +51,17 @@ public extension Dog {
             content = "[\(kind)]\n* |\(level.rawValue)| \(formatter.string(from: Date()))| \(message)"
         }
         // print stdout
-        print(content)
+        dogLogger.info("\(content)")
         // check
         guard let handler = logFileHandler else {
-            print("[E] failed/didn't open then file handler")
+            dogLogger.error("failed/didn't open the file handler")
             return
         }
         // write
         if let data = content.appending("\n").data(using: .utf8) {
             handler.write(data)
         } else {
-            print("Dog failed to create log data using utf8")
+            dogLogger.error("failed to create log data using utf8")
         }
     }
 
@@ -104,7 +104,7 @@ public extension Dog {
             .default
             .fileExists(atPath: storeLocationDir.path, isDirectory: &bool)
         if !(dirValidate && bool.boolValue) {
-            print("unable to initialize, permission denied on file")
+            dogLogger.error("unable to initialize, permission denied on file")
             throw NSError()
         }
 
@@ -143,13 +143,13 @@ public extension Dog {
             try cleanLogs()
         } catch {
             // some very bad permission issue
-            print("[Dog] \(#file) \(#line) failed to enumerate contents of directory: \(storeLocationDir)")
+            dogLogger.error("failed to enumerate contents of directory: \(storeLocationDir)")
             throw error
         }
 
         // Create file now
         FileManager.default.createFile(atPath: logFileLocation.path, contents: nil, attributes: nil)
-        print("[Dog] \(logFileLocation.path)")
+        dogLogger.info("log file: \(logFileLocation.path)")
 
         // open the handler
         if let handler = FileHandle(forWritingAtPath: logFileLocation.path) {

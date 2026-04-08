@@ -6,6 +6,9 @@
 //
 
 import Foundation
+import OSLog
+
+internal let dogLogger = Logger(subsystem: "com.lakr233.dog", category: "Dog")
 
 // MARK: - CHANGE ME IF NEEDED
 

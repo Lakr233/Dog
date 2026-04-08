@@ -50,7 +50,7 @@ internal extension Dog {
     /// - Throws: if any error
     func cleanLogs() throws {
         guard let underDir = currentLogFileDirLocation else {
-            print("[Dog] unable to find working location")
+            dogLogger.warning("unable to find working location")
             return
         }
         // grab all file names
@@ -68,7 +68,7 @@ internal extension Dog {
                 // the file that needs to be deleted
                 for index in 0 ..< deleteCount {
                     #if DEBUG
-                        print("please contact me if this assert really happens")
+                        dogLogger.warning("please contact me if this assert really happens")
                         assert(index < subitems.count && index >= 0, "\(#file) \(#line) bad index")
                     #else
                         // again, edge cases
@@ -77,11 +77,11 @@ internal extension Dog {
                         }
                     #endif
                     let file = underDir.appendingPathComponent("\(subitems[index])")
-                    debugPrint("[Dog] cleaning log file[\(index)] at: \(file.path)")
+                    dogLogger.debug("cleaning log file[\(index)] at: \(file.path)")
                     do {
                         try FileManager.default.removeItem(at: file)
                     } catch {
-                        print("[Dog] failed to delete old logs at: \(file)")
+                        dogLogger.error("failed to delete old logs at: \(file)")
                         #if DEBUG
                             fatalError("You are responsible for making the permission right")
                         #else
