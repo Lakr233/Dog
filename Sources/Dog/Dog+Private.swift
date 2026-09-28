@@ -35,13 +35,14 @@ internal extension Dog {
         // trim to grab data
         let dateStrA = String(a.dropFirst(prefixLenth).dropLast(suffixLenth))
         let dateStrB = String(b.dropFirst(prefixLenth).dropLast(suffixLenth))
-        let dateA = Dog.shared.formatter.date(from: dateStrA)
-        let dateB = Dog.shared.formatter.date(from: dateStrB)
+        let dateA = formatter.date(from: dateStrA)
+        let dateB = formatter.date(from: dateStrB)
         if let dateA = dateA, let dateB = dateB {
             // a is early then b
             return dateA.timeIntervalSince(dateB) < 0
         } else {
             // can not process
+            dogLogger.warning("unparsable log file name, comparing as text: \(a, privacy: .public) \(b, privacy: .public)")
             return a < b
         }
     }
@@ -53,42 +54,29 @@ internal extension Dog {
             dogLogger.warning("unable to find working location")
             return
         }
-        // grab all file names
-        let rawSubitems = try FileManager
+        // grab our own log files, anything else in the folder is not ours to delete
+        let logFiles = try FileManager
             .default
             .contentsOfDirectory(atPath: underDir.path)
-        // if too much
-        if rawSubitems.count > maximumLogCount {
-            // we are comparing the date
-            let subitems = rawSubitems.sorted { a, b -> Bool in
-                sortCompareFileName(a: a, b: b)
-            }
-            let deleteCount = subitems.count - maximumLogCount
-            if deleteCount > 0 {
-                // the file that needs to be deleted
-                for index in 0 ..< deleteCount {
-                    #if DEBUG
-                        dogLogger.warning("please contact me if this assert really happens")
-                        assert(index < subitems.count && index >= 0, "\(#file) \(#line) bad index")
-                    #else
-                        // again, edge cases
-                        if index < subitems.count, index >= 0 {
-                            continue
-                        }
-                    #endif
-                    let file = underDir.appendingPathComponent("\(subitems[index])")
-                    dogLogger.debug("cleaning log file[\(index)] at: \(file.path)")
-                    do {
-                        try FileManager.default.removeItem(at: file)
-                    } catch {
-                        dogLogger.error("failed to delete old logs at: \(file)")
-                        #if DEBUG
-                            fatalError("You are responsible for making the permission right")
-                        #else
-                            throw NSError()
-                        #endif
-                    }
-                }
+            .filter { $0.hasPrefix(loggingPrefix + "_") && $0.hasSuffix("." + loggingSuffix) }
+        let deleteCount = logFiles.count - maximumLogCount
+        guard deleteCount > 0 else {
+            dogLogger.debug("\(logFiles.count, privacy: .public) log file(s) kept, limit \(self.maximumLogCount, privacy: .public)")
+            return
+        }
+        dogLogger.info("removing \(deleteCount, privacy: .public) of \(logFiles.count, privacy: .public) log file(s), limit \(self.maximumLogCount, privacy: .public)")
+        // oldest first, by the date in the name
+        let oldest = logFiles
+            .sorted { a, b -> Bool in sortCompareFileName(a: a, b: b) }
+            .prefix(deleteCount)
+        for name in oldest {
+            let file = underDir.appendingPathComponent(name)
+            do {
+                try FileManager.default.removeItem(at: file)
+                dogLogger.debug("removed old log: \(file.path, privacy: .public)")
+            } catch {
+                // keep going, one stuck file must not keep the rest forever
+                dogLogger.error("failed to remove old log at \(file.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
     }

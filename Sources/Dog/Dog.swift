@@ -29,8 +29,18 @@ internal let cLogFilenameLenth = [
 
 // MARK: CHANGE ME IF NEEDED -
 
-// MARK: - THE CLASS
+// MARK: - ERRORS
 
+public enum DogError: Error {
+    /// no directory was given and the documents directory is unavailable
+    case noWritableDirectory
+    /// the log directory could not be created
+    case directoryUnavailable(URL)
+    /// the log file could not be created or opened
+    case fileUnavailable(URL)
+}
+
+// MARK: - THE CLASS
 
 public final class Dog {
     public enum DogLevel: String {
@@ -63,15 +73,8 @@ public final class Dog {
 
     public internal(set) var currentLogFileLocation: URL?
     public internal(set) var currentLogFileDirLocation: URL?
-    internal var logFileHandler: FileHandle? {
-        didSet {
-            #if DEBUG
-                if let oldValue = oldValue {
-                    fatalError("[Dog] logFileHandler was being modified \(oldValue)")
-                }
-            #endif
-        }
-    }
+    /// replaced under `executionLock` when initialization runs again
+    internal var logFileHandler: FileHandle?
 
     /// Thread Safe
     internal let executionLock = NSLock()
@@ -79,9 +82,16 @@ public final class Dog {
     /// grouped tagging
     internal var lastTag: String?
 
-    /// date formatter for log name
-    internal var formatter: DateFormatter = {
+    /// writes failed in a row, reported sparsely so a full disk does not flood
+    internal var failedWriteCount = 0
+
+    /// date formatter for log names and lines
+    /// fixed to en_US_POSIX so the user's calendar, numbering system or
+    /// 12-hour clock can not change a file name that is parsed back later
+    internal let formatter: DateFormatter = {
         let initDateFormatter = DateFormatter()
+        initDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        initDateFormatter.calendar = Calendar(identifier: .gregorian)
         initDateFormatter.dateFormat = loggingFormatter
         return initDateFormatter
     }()

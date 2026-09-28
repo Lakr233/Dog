@@ -58,10 +58,26 @@ public extension Dog {
             return
         }
         // write
-        if let data = content.appending("\n").data(using: .utf8) {
-            handler.write(data)
-        } else {
+        guard let data = content.appending("\n").data(using: .utf8) else {
             dogLogger.error("failed to create log data using utf8")
+            return
+        }
+        // the throwing write, a full disk or a closed file must never take
+        // the process down; the legacy write(_:) raises an ObjC exception
+        do {
+            try handler.write(contentsOf: data)
+            if failedWriteCount > 0 {
+                dogLogger.info("log writes recovered after \(self.failedWriteCount, privacy: .public) failure(s)")
+                failedWriteCount = 0
+            }
+        } catch {
+            // the tag line may be lost with this one, repeat it next time
+            lastTag = nil
+            failedWriteCount += 1
+            // a full disk fails every line, report the first and then every thousandth
+            if failedWriteCount == 1 || failedWriteCount % 1000 == 0 {
+                dogLogger.error("failed to write log (\(self.failedWriteCount, privacy: .public) so far) to \(self.currentLogFileLocation?.path ?? "?", privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -85,27 +101,33 @@ public extension Dog {
                 .first
         }
         guard let dispathDir = dispathDir else {
-            throw NSError()
+            dogLogger.error("unable to initialize, no directory given and no documents directory")
+            throw DogError.noWritableDirectory
         }
-
-        try? FileManager
-            .default
-            .createDirectory(atPath: dispathDir.path,
-                             withIntermediateDirectories: true,
-                             attributes: nil)
         let storeLocationDir = dispathDir
             .appendingPathComponent(Dog.dirBase, isDirectory: true)
-        try? FileManager.default.createDirectory(atPath: storeLocationDir.path,
-                                                 withIntermediateDirectories: true,
-                                                 attributes: nil)
+        dogLogger.info("initializing in \(storeLocationDir.path, privacy: .public)")
+
+        do {
+            try FileManager.default.createDirectory(atPath: storeLocationDir.path,
+                                                    withIntermediateDirectories: true,
+                                                    attributes: nil)
+        } catch {
+            // an existing folder is fine, the check below decides
+            dogLogger.warning("failed to create \(storeLocationDir.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
 
         var bool = ObjCBool(false)
         let dirValidate = FileManager
             .default
             .fileExists(atPath: storeLocationDir.path, isDirectory: &bool)
         if !(dirValidate && bool.boolValue) {
-            dogLogger.error("unable to initialize, permission denied on file")
-            throw NSError()
+            dogLogger.error("unable to initialize, \(storeLocationDir.path, privacy: .public) is not a directory we can use")
+            throw DogError.directoryUnavailable(storeLocationDir)
+        }
+        if !FileManager.default.isWritableFile(atPath: storeLocationDir.path) {
+            // creating the file below will fail and say so, this names the cause
+            dogLogger.warning("\(storeLocationDir.path, privacy: .public) is not writable by this process")
         }
 
         currentLogFileDirLocation = storeLocationDir
@@ -143,22 +165,29 @@ public extension Dog {
             try cleanLogs()
         } catch {
             // some very bad permission issue
-            dogLogger.error("failed to enumerate contents of directory: \(storeLocationDir)")
+            dogLogger.error("failed to enumerate \(storeLocationDir.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             throw error
         }
 
         // Create file now
-        FileManager.default.createFile(atPath: logFileLocation.path, contents: nil, attributes: nil)
-        dogLogger.info("log file: \(logFileLocation.path)")
-
-        // open the handler
-        if let handler = FileHandle(forWritingAtPath: logFileLocation.path) {
-            logFileHandler = handler
-        } else {
-            throw NSError()
+        guard FileManager.default.createFile(atPath: logFileLocation.path, contents: nil, attributes: nil),
+              let handler = FileHandle(forWritingAtPath: logFileLocation.path)
+        else {
+            dogLogger.error("failed to create log file at \(logFileLocation.path, privacy: .public), errno \(errno, privacy: .public)")
+            throw DogError.fileUnavailable(logFileLocation)
         }
-
+        executionLock.lock()
+        let previous = logFileHandler
+        logFileHandler = handler
+        lastTag = nil
+        failedWriteCount = 0
         currentLogFileLocation = logFileLocation
+        executionLock.unlock()
+        if previous != nil {
+            dogLogger.info("initialization ran again, closing the previous log file")
+        }
+        try? previous?.close()
+        dogLogger.info("log file: \(logFileLocation.path, privacy: .public)")
     }
 
     // TODO: Filtering Level
